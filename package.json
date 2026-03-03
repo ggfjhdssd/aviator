@@ -1,7 +1,7 @@
 {
   "name": "aviator-crash-game",
   "version": "1.0.0",
-  "description": "Aviator Crash Game with Node.js, Express, Socket.io and MongoDB",
+  "description": "Aviator Crash Game with Node.js, Socket.io and MongoDB",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -16,8 +16,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "engines": {
-    "node": "18.x"
   }
 }
