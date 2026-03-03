@@ -1,110 +1,174 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="my">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aviator Crash Game</title>
+    <title>PREMIUM AVIATOR | ဂိမ်းကစားရန်</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        .game-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .game-header {
+            background: rgba(8, 20, 40, 0.5);
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 30px;
+            padding: 25px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+        }
+        
+        .user-info {
+            color: #00ffff;
+            font-size: 20px;
+            text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+        
+        .balance-box {
+            background: linear-gradient(135deg, #00aaff, #0066ff);
+            padding: 12px 30px;
+            border-radius: 50px;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+            box-shadow: 0 0 30px rgba(0, 170, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .logout-btn {
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            padding: 10px 25px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        .logout-btn:hover {
+            background: #00ffff;
+            color: #000814;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.6);
+        }
+        
+        .game-area {
+            background: rgba(8, 20, 40, 0.5);
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 30px;
+            height: 500px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 30px;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.2);
+        }
+        
+        .coming-soon {
+            color: #00ffff;
+            font-size: 48px;
+            text-align: center;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+            animation: glow 2s infinite alternate;
+        }
+        
+        .coming-soon small {
+            display: block;
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        @keyframes glow {
+            from { text-shadow: 0 0 30px rgba(0, 255, 255, 0.5); }
+            to { text-shadow: 0 0 60px rgba(0, 255, 255, 0.9); }
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header with Balance -->
-        <header>
-            <div class="main-account">
-                <span>Main account</span>
-                <span class="time">3:56 <span class="signal">LTE 75%</span></span>
+    <div class="game-container">
+        <div class="game-header">
+            <div class="user-info">
+                <span id="username">ကစားသမား</span> ကြိုဆိုပါတယ်
             </div>
-            <div class="balance-container">
-                <span class="balance-label">Balance</span>
-                <span class="balance-amount" id="balance">5000</span>
-                <span class="currency">XAF</span>
+            <div class="balance-box">
+                လက်ကျန်ငွေ: <span id="balance">5000</span> ကျပ်
             </div>
-        </header>
-
-        <!-- Stats Bar -->
-        <div class="stats-bar">
-            <div class="stat">
-                <span class="stat-label">Number of players</span>
-                <span class="stat-value" id="players">2244</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Total bets</span>
-                <span class="stat-value" id="totalBets">2,420,960.33</span>
-                <span class="currency">XAF</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Total winnings</span>
-                <span class="stat-value" id="totalWinnings">2,420,960.33</span>
-                <span class="currency">XAF</span>
-            </div>
+            <button class="logout-btn" id="logoutBtn">ထွက်ရန်</button>
         </div>
-
-        <!-- Game Area with Canvas -->
+        
         <div class="game-area">
-            <canvas id="gameCanvas" width="800" height="400"></canvas>
-            <div class="multiplier-container">
-                <span id="multiplier">1.01x</span>
+            <div class="coming-soon">
+                ✈️ PREMIUM AVIATOR ✈️
+                <small>ဂိမ်းအပိုင်းကို မကြာမီ ထည့်သွင်းပေးပါမည်</small>
             </div>
-            <div class="game-status" id="gameStatus">Waiting for next round...</div>
-        </div>
-
-        <!-- Betting Section -->
-        <div class="betting-section">
-            <div class="bet-header">
-                <span class="bet-label">Bet</span>
-                <span class="history-link">HISTORY</span>
-            </div>
-            
-            <div class="bet-presets">
-                <button class="preset-btn" data-amount="200">200</button>
-                <button class="preset-btn" data-amount="800">800</button>
-                <button class="preset-btn" data-amount="2000">2000</button>
-                <button class="preset-btn" data-amount="6000">6000</button>
-                <button class="preset-btn" data-amount="20000">20000</button>
-                <button class="preset-btn" data-amount="80000">80000</button>
-            </div>
-            
-            <div class="bet-controls">
-                <div class="bet-input-group">
-                    <span class="currency-symbol">XAF</span>
-                    <input type="number" id="betAmount" value="200" min="200" max="80000" step="100">
-                </div>
-                
-                <div class="action-buttons">
-                    <button id="placeBetBtn" class="btn-place">PLACE A BET</button>
-                    <button id="cashoutBtn" class="btn-cashout" disabled>TAKE WINNINGS</button>
-                </div>
-            </div>
-            
-            <!-- Auto bet option -->
-            <div class="auto-bet">
-                <label class="checkbox-container">
-                    <input type="checkbox" id="autoBet">
-                    <span class="checkmark"></span>
-                    <span>AUTOBET</span>
-                </label>
-            </div>
-        </div>
-
-        <!-- Players History Table -->
-        <div class="players-history">
-            <table>
-                <thead>
-                    <tr>
-                        <th>USERNAME</th>
-                        <th>ODDS</th>
-                        <th>BET</th>
-                        <th>WIN</th>
-                    </tr>
-                </thead>
-                <tbody id="historyTable">
-                    <!-- Dynamic content will be inserted here -->
-                </tbody>
-            </table>
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="script.js"></script>
+    <script>
+        // Load user data
+        async function loadUserData() {
+            try {
+                const response = await fetch('/api/user-data', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        document.getElementById('username').textContent = data.user.username;
+                        document.getElementById('balance').textContent = data.user.balance;
+                    }
+                } else {
+                    window.location.href = '/login.html';
+                }
+            } catch (error) {
+                console.error('Error loading user data:', error);
+            }
+        }
+        
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/logout', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = data.redirect;
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        });
+        
+        // Load data on page load
+        loadUserData();
+        
+        // Check auth status every 30 seconds
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/auth-status', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (!data.isAuthenticated) {
+                    window.location.href = '/login.html';
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+            }
+        }, 30000);
+    </script>
 </body>
 </html>
