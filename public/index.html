@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aviator Crash Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>✈️ Aviator Crash Game</h1>
+            <div class="user-info">
+                <div class="balance">
+                    <span>Balance:</span>
+                    <span id="balance">0</span>
+                </div>
+                <div class="username">
+                    <input type="text" id="username" placeholder="Enter username" value="Player1">
+                    <button id="registerBtn" class="btn-primary">Register</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="game-area">
+                <div class="multiplier-display">
+                    <div id="multiplier">1.00x</div>
+                    <div id="gameStatus" class="status">Waiting for game to start...</div>
+                </div>
+                
+                <div class="game-controls">
+                    <div class="bet-controls">
+                        <input type="number" id="betAmount" min="1" value="10" placeholder="Bet amount">
+                        <button id="placeBetBtn" class="btn-primary" disabled>Place Bet</button>
+                        <button id="cashoutBtn" class="btn-success" disabled>Cashout</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-panels">
+                <div class="active-bets">
+                    <h3>Active Bets</h3>
+                    <div id="activeBetsList">No active bets</div>
+                </div>
+                
+                <div class="game-history">
+                    <h3>Game History</h3>
+                    <div id="historyList">Loading...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
