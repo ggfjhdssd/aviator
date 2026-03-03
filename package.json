@@ -1,7 +1,7 @@
 {
-  "name": "aviator-crash-game",
+  "name": "aviator-premium-auth",
   "version": "1.0.0",
-  "description": "Aviator Crash Game with Node.js, Socket.io and MongoDB",
+  "description": "Aviator Game Premium Authentication with Myanmar Language",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,10 +9,12 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2",
     "mongoose": "^7.5.0",
+    "bcrypt": "^5.1.1",
+    "express-session": "^1.17.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "connect-mongo": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
