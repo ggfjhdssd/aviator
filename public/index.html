@@ -8,48 +8,100 @@
 </head>
 <body>
     <div class="container">
+        <!-- Header with Balance -->
         <header>
-            <h1>✈️ Aviator Crash Game</h1>
-            <div class="user-info">
-                <div class="balance">
-                    <span>Balance:</span>
-                    <span id="balance">0</span>
-                </div>
-                <div class="username">
-                    <input type="text" id="username" placeholder="Enter username" value="Player1">
-                    <button id="registerBtn" class="btn-primary">Register</button>
-                </div>
+            <div class="main-account">
+                <span>Main account</span>
+                <span class="time">3:56 <span class="signal">LTE 75%</span></span>
+            </div>
+            <div class="balance-container">
+                <span class="balance-label">Balance</span>
+                <span class="balance-amount" id="balance">5000</span>
+                <span class="currency">XAF</span>
             </div>
         </header>
 
-        <main>
-            <div class="game-area">
-                <div class="multiplier-display">
-                    <div id="multiplier">1.00x</div>
-                    <div id="gameStatus" class="status">Waiting for game to start...</div>
-                </div>
-                
-                <div class="game-controls">
-                    <div class="bet-controls">
-                        <input type="number" id="betAmount" min="1" value="10" placeholder="Bet amount">
-                        <button id="placeBetBtn" class="btn-primary" disabled>Place Bet</button>
-                        <button id="cashoutBtn" class="btn-success" disabled>Cashout</button>
-                    </div>
-                </div>
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat">
+                <span class="stat-label">Number of players</span>
+                <span class="stat-value" id="players">2244</span>
             </div>
+            <div class="stat">
+                <span class="stat-label">Total bets</span>
+                <span class="stat-value" id="totalBets">2,420,960.33</span>
+                <span class="currency">XAF</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Total winnings</span>
+                <span class="stat-value" id="totalWinnings">2,420,960.33</span>
+                <span class="currency">XAF</span>
+            </div>
+        </div>
 
-            <div class="info-panels">
-                <div class="active-bets">
-                    <h3>Active Bets</h3>
-                    <div id="activeBetsList">No active bets</div>
+        <!-- Game Area with Canvas -->
+        <div class="game-area">
+            <canvas id="gameCanvas" width="800" height="400"></canvas>
+            <div class="multiplier-container">
+                <span id="multiplier">1.01x</span>
+            </div>
+            <div class="game-status" id="gameStatus">Waiting for next round...</div>
+        </div>
+
+        <!-- Betting Section -->
+        <div class="betting-section">
+            <div class="bet-header">
+                <span class="bet-label">Bet</span>
+                <span class="history-link">HISTORY</span>
+            </div>
+            
+            <div class="bet-presets">
+                <button class="preset-btn" data-amount="200">200</button>
+                <button class="preset-btn" data-amount="800">800</button>
+                <button class="preset-btn" data-amount="2000">2000</button>
+                <button class="preset-btn" data-amount="6000">6000</button>
+                <button class="preset-btn" data-amount="20000">20000</button>
+                <button class="preset-btn" data-amount="80000">80000</button>
+            </div>
+            
+            <div class="bet-controls">
+                <div class="bet-input-group">
+                    <span class="currency-symbol">XAF</span>
+                    <input type="number" id="betAmount" value="200" min="200" max="80000" step="100">
                 </div>
                 
-                <div class="game-history">
-                    <h3>Game History</h3>
-                    <div id="historyList">Loading...</div>
+                <div class="action-buttons">
+                    <button id="placeBetBtn" class="btn-place">PLACE A BET</button>
+                    <button id="cashoutBtn" class="btn-cashout" disabled>TAKE WINNINGS</button>
                 </div>
             </div>
-        </main>
+            
+            <!-- Auto bet option -->
+            <div class="auto-bet">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="autoBet">
+                    <span class="checkmark"></span>
+                    <span>AUTOBET</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Players History Table -->
+        <div class="players-history">
+            <table>
+                <thead>
+                    <tr>
+                        <th>USERNAME</th>
+                        <th>ODDS</th>
+                        <th>BET</th>
+                        <th>WIN</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTable">
+                    <!-- Dynamic content will be inserted here -->
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
