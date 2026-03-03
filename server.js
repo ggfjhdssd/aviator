@@ -31,124 +31,128 @@ mongoose.connect(MONGODB_URI, {
   console.error('❌ MongoDB Connection Error:', err);
 });
 
-// User Schema
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  balance: { type: Number, default: 1000 },
-  createdAt: { type: Date, default: Date.now }
-});
-
-// Game History Schema
-const gameHistorySchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  betAmount: { type: Number, required: true },
-  cashoutMultiplier: { type: Number, default: 0 },
-  profit: { type: Number, default: 0 },
-  crashedAt: { type: Number, default: 0 },
-  status: { type: String, enum: ['win', 'loss', 'pending'], default: 'pending' },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', userSchema);
-const GameHistory = mongoose.model('GameHistory', gameHistorySchema);
+const User = require('./models/User');
 
 // Game State
-let currentMultiplier = 1.00;
-let gameActive = false;
-let gameLoop = null;
-let crashPoint = 1.00;
-let activeBets = new Map(); // userId -> { betAmount, socketId }
-let cashedOut = new Map(); // userId -> multiplier
+let gameState = {
+  status: 'waiting', // waiting, flying, crashed
+  multiplier: 1.00,
+  crashPoint: 1.00,
+  timeRemaining: 5,
+  players: 0,
+  totalBets: 0,
+  totalWinnings: 0,
+  activeBets: new Map(), // username -> { amount, socketId }
+  cashedOut: new Map() // username -> multiplier
+};
 
-// Generate random crash point (1.00 to 10.00)
+// Stats update interval
+let statsInterval = null;
+
+// Generate random stats
+function updateStats() {
+  gameState.players = Math.floor(Math.random() * 50) + 10;
+  gameState.totalBets = Math.floor(Math.random() * 1000000) + 500000;
+  gameState.totalWinnings = Math.floor(Math.random() * 800000) + 200000;
+  
+  io.emit('statsUpdate', {
+    players: gameState.players,
+    totalBets: gameState.totalBets,
+    totalWinnings: gameState.totalWinnings
+  });
+}
+
+// Start stats updates
+function startStatsUpdates() {
+  if (statsInterval) clearInterval(statsInterval);
+  statsInterval = setInterval(updateStats, 5000);
+}
+
+// Generate random crash point
 function generateCrashPoint() {
-  // Random crash point between 1.00 and 10.00
-  // Higher chance of low multipliers
   const random = Math.random();
-  if (random < 0.3) return 1.00; // 30% chance of instant crash
-  if (random < 0.5) return Number((1 + Math.random() * 0.5).toFixed(2)); // 1.00 - 1.50
-  if (random < 0.7) return Number((1.5 + Math.random() * 1).toFixed(2)); // 1.50 - 2.50
-  if (random < 0.85) return Number((2.5 + Math.random() * 2).toFixed(2)); // 2.50 - 4.50
-  return Number((4.5 + Math.random() * 5.5).toFixed(2)); // 4.50 - 10.00
+  if (random < 0.3) return 1.01;
+  if (random < 0.5) return Number((1 + Math.random() * 0.5).toFixed(2));
+  if (random < 0.7) return Number((1.5 + Math.random() * 1).toFixed(2));
+  if (random < 0.85) return Number((2.5 + Math.random() * 2).toFixed(2));
+  return Number((4.5 + Math.random() * 5.5).toFixed(2));
 }
 
-// Start new game
-async function startNewGame() {
-  if (gameActive) return;
-  
-  crashPoint = generateCrashPoint();
-  currentMultiplier = 1.00;
-  gameActive = true;
-  activeBets.clear();
-  cashedOut.clear();
-  
-  console.log(`🎮 New game started. Crash point: ${crashPoint}x`);
-  
-  io.emit('gameStarted', { multiplier: currentMultiplier });
-  
-  // Start multiplier increase
-  let increment = 0.01;
-  gameLoop = setInterval(() => {
-    if (!gameActive) return;
+// Game Loop
+async function gameLoop() {
+  while (true) {
+    // Waiting state (5 seconds)
+    gameState.status = 'waiting';
+    gameState.multiplier = 1.00;
+    gameState.timeRemaining = 5;
+    gameState.activeBets.clear();
+    gameState.cashedOut.clear();
     
-    currentMultiplier = Number((currentMultiplier + increment).toFixed(2));
+    console.log('⏳ Waiting for bets...');
+    io.emit('waitingStatus', { timeRemaining: gameState.timeRemaining });
     
-    // Increase speed as multiplier grows
-    if (currentMultiplier > 5) increment = 0.05;
-    else if (currentMultiplier > 2) increment = 0.02;
-    
-    io.emit('multiplierUpdate', { multiplier: currentMultiplier });
-    
-    // Check for crash
-    if (currentMultiplier >= crashPoint) {
-      crash();
+    // Countdown
+    while (gameState.timeRemaining > 0) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      gameState.timeRemaining--;
+      io.emit('waitingStatus', { timeRemaining: gameState.timeRemaining });
     }
-  }, 100);
-}
-
-// Crash game
-async function crash() {
-  if (!gameActive) return;
-  
-  gameActive = false;
-  clearInterval(gameLoop);
-  
-  console.log(`💥 Game crashed at ${crashPoint}x`);
-  
-  // Process pending bets (losses)
-  for (const [userId, bet] of activeBets) {
-    try {
-      const user = await User.findById(userId);
-      if (user) {
-        // Record loss
-        await GameHistory.create({
-          userId: user._id,
-          betAmount: bet.amount,
-          cashoutMultiplier: 0,
-          profit: -bet.amount,
-          crashedAt: crashPoint,
-          status: 'loss'
-        });
-        
-        // Emit loss to user
-        io.to(bet.socketId).emit('betResult', {
-          result: 'loss',
-          multiplier: crashPoint,
-          betAmount: bet.amount,
-          profit: -bet.amount,
-          newBalance: user.balance
-        });
+    
+    // Start flying
+    gameState.status = 'flying';
+    gameState.crashPoint = generateCrashPoint();
+    gameState.multiplier = 1.00;
+    
+    console.log(`✈️ Game started. Crash point: ${gameState.crashPoint}x`);
+    io.emit('gameStarted', { multiplier: gameState.multiplier });
+    
+    // Flying state
+    let increment = 0.01;
+    while (gameState.multiplier < gameState.crashPoint) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      gameState.multiplier = Number((gameState.multiplier + increment).toFixed(2));
+      
+      if (gameState.multiplier > 5) increment = 0.05;
+      else if (gameState.multiplier > 2) increment = 0.02;
+      
+      io.emit('multiplierUpdate', { multiplier: gameState.multiplier });
+    }
+    
+    // Crash!
+    gameState.status = 'crashed';
+    console.log(`💥 Game crashed at ${gameState.crashPoint}x`);
+    
+    // Process pending bets (losses)
+    for (const [username, bet] of gameState.activeBets) {
+      try {
+        const user = await User.findOne({ username });
+        if (user) {
+          // No balance change, just record loss
+          io.to(bet.socketId).emit('betResult', {
+            result: 'loss',
+            multiplier: gameState.crashPoint,
+            betAmount: bet.amount,
+            profit: 0,
+            newBalance: user.balance
+          });
+        }
+      } catch (error) {
+        console.error('Error processing loss:', error);
       }
-    } catch (error) {
-      console.error('Error processing loss:', error);
     }
+    
+    io.emit('gameCrashed', { multiplier: gameState.crashPoint });
+    
+    // Short pause before next round
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
-  
-  io.emit('gameCrashed', { multiplier: crashPoint });
-  
-  // Start new game after delay
-  setTimeout(startNewGame, 5000);
 }
+
+// Start the game
+setTimeout(() => {
+  gameLoop();
+  startStatsUpdates();
+}, 1000);
 
 // Socket.io Connection
 io.on('connection', (socket) => {
@@ -159,21 +163,20 @@ io.on('connection', (socket) => {
       let user = await User.findOne({ username: data.username });
       
       if (!user) {
-        user = new User({ username: data.username, balance: 1000 });
+        user = new User({ username: data.username });
         await user.save();
-        console.log(`📝 New user created: ${data.username}`);
       }
       
       socket.emit('userData', {
-        userId: user._id,
         username: user.username,
         balance: user.balance
       });
       
       // Send current game state
       socket.emit('gameState', {
-        active: gameActive,
-        multiplier: currentMultiplier
+        status: gameState.status,
+        multiplier: gameState.multiplier,
+        timeRemaining: gameState.timeRemaining
       });
       
     } catch (error) {
@@ -184,15 +187,15 @@ io.on('connection', (socket) => {
   
   socket.on('placeBet', async (data) => {
     try {
-      if (!gameActive) {
-        return socket.emit('error', { message: 'Game not active' });
+      if (gameState.status !== 'waiting') {
+        return socket.emit('error', { message: 'Can only bet during waiting time' });
       }
       
-      if (activeBets.has(data.userId)) {
+      if (gameState.activeBets.has(data.username)) {
         return socket.emit('error', { message: 'Bet already placed' });
       }
       
-      const user = await User.findById(data.userId);
+      const user = await User.findOne({ username: data.username });
       if (!user) {
         return socket.emit('error', { message: 'User not found' });
       }
@@ -203,10 +206,11 @@ io.on('connection', (socket) => {
       
       // Deduct bet amount
       user.balance -= data.amount;
+      user.totalBets += data.amount;
       await user.save();
       
       // Store bet
-      activeBets.set(data.userId, {
+      gameState.activeBets.set(data.username, {
         amount: data.amount,
         socketId: socket.id
       });
@@ -216,7 +220,7 @@ io.on('connection', (socket) => {
         newBalance: user.balance
       });
       
-      console.log(`💰 Bet placed: User ${data.userId} - Amount: ${data.amount}`);
+      console.log(`💰 Bet placed: ${data.username} - Amount: ${data.amount}`);
       
     } catch (error) {
       console.error('Bet placement error:', error);
@@ -226,51 +230,43 @@ io.on('connection', (socket) => {
   
   socket.on('cashout', async (data) => {
     try {
-      if (!gameActive || cashedOut.has(data.userId)) {
+      if (gameState.status !== 'flying' || gameState.cashedOut.has(data.username)) {
         return;
       }
       
-      const bet = activeBets.get(data.userId);
+      const bet = gameState.activeBets.get(data.username);
       if (!bet) {
         return socket.emit('error', { message: 'No active bet found' });
       }
       
-      const user = await User.findById(data.userId);
+      const user = await User.findOne({ username: data.username });
       if (!user) {
         return socket.emit('error', { message: 'User not found' });
       }
       
-      // Calculate profit
-      const profit = bet.amount * (currentMultiplier - 1);
-      const newBalance = user.balance + bet.amount + profit;
+      // Calculate winnings
+      const winnings = Math.floor(bet.amount * gameState.multiplier);
+      const profit = winnings - bet.amount;
       
       // Update user balance
-      user.balance = newBalance;
+      user.balance += winnings;
+      user.totalWinnings += profit;
       await user.save();
       
-      // Record win
-      await GameHistory.create({
-        userId: user._id,
-        betAmount: bet.amount,
-        cashoutMultiplier: currentMultiplier,
-        profit: profit,
-        crashedAt: crashPoint,
-        status: 'win'
-      });
-      
       // Remove from active bets
-      activeBets.delete(data.userId);
-      cashedOut.set(data.userId, currentMultiplier);
+      gameState.activeBets.delete(data.username);
+      gameState.cashedOut.set(data.username, gameState.multiplier);
       
       socket.emit('betResult', {
         result: 'win',
-        multiplier: currentMultiplier,
+        multiplier: gameState.multiplier,
         betAmount: bet.amount,
+        winnings: winnings,
         profit: profit,
-        newBalance: newBalance
+        newBalance: user.balance
       });
       
-      console.log(`💰 Cashout: User ${data.userId} - Multiplier: ${currentMultiplier}x - Profit: ${profit}`);
+      console.log(`💰 Cashout: ${data.username} - Multiplier: ${gameState.multiplier}x - Profit: ${profit}`);
       
     } catch (error) {
       console.error('Cashout error:', error);
@@ -282,51 +278,6 @@ io.on('connection', (socket) => {
     console.log('🔌 Client disconnected:', socket.id);
   });
 });
-
-// Admin API - Add coins
-app.post('/admin/add-coin', async (req, res) => {
-  try {
-    const { username, amount } = req.body;
-    
-    if (!username || !amount || amount <= 0) {
-      return res.status(400).json({ error: 'Invalid username or amount' });
-    }
-    
-    const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    user.balance += amount;
-    await user.save();
-    
-    res.json({
-      success: true,
-      message: `Added ${amount} coins to ${username}`,
-      newBalance: user.balance
-    });
-    
-  } catch (error) {
-    console.error('Admin API error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// API to get user history
-app.get('/api/history/:userId', async (req, res) => {
-  try {
-    const history = await GameHistory.find({ userId: req.params.userId })
-      .sort({ createdAt: -1 })
-      .limit(20);
-    
-    res.json(history);
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Start the game when server starts
-setTimeout(startNewGame, 3000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
