@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PREMIUM AVIATOR | အကောင့်ဝင်ရန်</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="premium-card">
+            <!-- Premium Header -->
+            <div class="premium-header">
+                <h1>✈️ AVIATOR ✈️</h1>
+                <h2>ဂိမ်းဆော့ရင်း ပိုက်ဆံရှာ</h2>
+                <div class="tagline">PREMIUM GAMING</div>
+            </div>
+
+            <!-- Login Form -->
+            <form class="premium-form" id="loginForm">
+                <div class="form-group">
+                    <label><i>👤</i> အသုံးပြုသူအမည်</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input type="text" id="username" placeholder="သင်၏အသုံးပြုသူအမည်" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><i>🔐</i> စကားဝှက်</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔐</span>
+                        <input type="password" id="password" placeholder="စကားဝှက်ထည့်ပါ" required>
+                    </div>
+                </div>
+
+                <!-- Message Container -->
+                <div id="messageContainer" class="message-container" style="display: none;"></div>
+
+                <button type="submit" class="btn-neon" id="loginBtn">
+                    <span>အကောင့်ဝင်ရန်</span>
+                </button>
+            </form>
+
+            <!-- Links -->
+            <div class="auth-links">
+                <a href="signup.html">အကောင့်သစ်ဖွင့်ရန်</a>
+                <span>•</span>
+                <a href="forget-password.html">စကားဝှက်မေ့နေပါသလား?</a>
+            </div>
+
+            <!-- Footer -->
+            <div class="premium-footer">
+                <p>© 2024 PREMIUM AVIATOR • မြန်မာ့ဂိမ်း</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const messageContainer = document.getElementById('messageContainer');
+            const loginBtn = document.getElementById('loginBtn');
+            
+            // Show loading
+            loginBtn.innerHTML = '<span class="spinner"></span> ဝင်ရောက်နေသည်...';
+            loginBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    messageContainer.style.display = 'block';
+                    messageContainer.className = 'message-container success';
+                    messageContainer.textContent = '✅ ' + data.message;
+                    
+                    // Redirect to game page
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 1500);
+                } else {
+                    messageContainer.style.display = 'block';
+                    messageContainer.className = 'message-container error';
+                    messageContainer.textContent = '❌ ' + data.message;
+                    
+                    loginBtn.innerHTML = 'အကောင့်ဝင်ရန်';
+                    loginBtn.disabled = false;
+                }
+            } catch (error) {
+                messageContainer.style.display = 'block';
+                messageContainer.className = 'message-container error';
+                messageContainer.textContent = '❌ ဆာဗာနှင့် ချိတ်ဆက်မှု အဆင်မပြေပါ။';
+                
+                loginBtn.innerHTML = 'အကောင့်ဝင်ရန်';
+                loginBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
