@@ -1,285 +1,373 @@
 const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
 const mongoose = require('mongoose');
-const cors = require('cors');
+const session = require('express-session');
+const bcrypt = require('bcrypt');
 const path = require('path');
+const cors = require('cors');
+const MongoStore = require('connect-mongo');
 require('dotenv').config();
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
+// MongoDB Connection (Render Environment Variable)
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aviator_game';
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI ကို Environment Variable ထဲမှာ ထည့်ပေးပါ။');
+  process.exit(1);
+}
+
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).then(() => {
-  console.log('✅ MongoDB Connected Successfully');
+  console.log('✅ Premium Database Connected Successfully');
 }).catch((err) => {
-  console.error('❌ MongoDB Connection Error:', err);
+  console.error('❌ Database Connection Error:', err);
 });
 
 const User = require('./models/User');
 
-// Game State
-let gameState = {
-  status: 'waiting', // waiting, flying, crashed
-  multiplier: 1.00,
-  crashPoint: 1.00,
-  timeRemaining: 5,
-  players: 0,
-  totalBets: 0,
-  totalWinnings: 0,
-  activeBets: new Map(), // username -> { amount, socketId }
-  cashedOut: new Map() // username -> multiplier
+// Middleware
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// Session Configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'premium-aviator-secret-key-2024',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: MONGODB_URI,
+    ttl: 24 * 60 * 60 // 1 day
+  }),
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24, // 1 day
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  }
+}));
+
+// Authentication Middleware
+const requireAuth = (req, res, next) => {
+  if (req.session && req.session.userId) {
+    return next();
+  }
+  res.redirect('/login.html');
 };
 
-// Stats update interval
-let statsInterval = null;
+// ============= AUTHENTICATION ROUTES =============
 
-// Generate random stats
-function updateStats() {
-  gameState.players = Math.floor(Math.random() * 50) + 10;
-  gameState.totalBets = Math.floor(Math.random() * 1000000) + 500000;
-  gameState.totalWinnings = Math.floor(Math.random() * 800000) + 200000;
-  
-  io.emit('statsUpdate', {
-    players: gameState.players,
-    totalBets: gameState.totalBets,
-    totalWinnings: gameState.totalWinnings
-  });
-}
+// SIGNUP ROUTE
+app.post('/api/signup', async (req, res) => {
+  try {
+    const { username, email, password, confirmPassword } = req.body;
 
-// Start stats updates
-function startStatsUpdates() {
-  if (statsInterval) clearInterval(statsInterval);
-  statsInterval = setInterval(updateStats, 5000);
-}
-
-// Generate random crash point
-function generateCrashPoint() {
-  const random = Math.random();
-  if (random < 0.3) return 1.01;
-  if (random < 0.5) return Number((1 + Math.random() * 0.5).toFixed(2));
-  if (random < 0.7) return Number((1.5 + Math.random() * 1).toFixed(2));
-  if (random < 0.85) return Number((2.5 + Math.random() * 2).toFixed(2));
-  return Number((4.5 + Math.random() * 5.5).toFixed(2));
-}
-
-// Game Loop
-async function gameLoop() {
-  while (true) {
-    // Waiting state (5 seconds)
-    gameState.status = 'waiting';
-    gameState.multiplier = 1.00;
-    gameState.timeRemaining = 5;
-    gameState.activeBets.clear();
-    gameState.cashedOut.clear();
-    
-    console.log('⏳ Waiting for bets...');
-    io.emit('waitingStatus', { timeRemaining: gameState.timeRemaining });
-    
-    // Countdown
-    while (gameState.timeRemaining > 0) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      gameState.timeRemaining--;
-      io.emit('waitingStatus', { timeRemaining: gameState.timeRemaining });
+    // Validation
+    if (!username || !email || !password || !confirmPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ကျေးဇူးပြု၍ အကွက်အားလုံး ဖြည့်သွင်းပါ။' 
+      });
     }
-    
-    // Start flying
-    gameState.status = 'flying';
-    gameState.crashPoint = generateCrashPoint();
-    gameState.multiplier = 1.00;
-    
-    console.log(`✈️ Game started. Crash point: ${gameState.crashPoint}x`);
-    io.emit('gameStarted', { multiplier: gameState.multiplier });
-    
-    // Flying state
-    let increment = 0.01;
-    while (gameState.multiplier < gameState.crashPoint) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      gameState.multiplier = Number((gameState.multiplier + increment).toFixed(2));
-      
-      if (gameState.multiplier > 5) increment = 0.05;
-      else if (gameState.multiplier > 2) increment = 0.02;
-      
-      io.emit('multiplierUpdate', { multiplier: gameState.multiplier });
+
+    if (username.length < 3) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'အသုံးပြုသူအမည်သည် အနည်းဆုံး ၃ လုံးရှိရပါမည်။' 
+      });
     }
-    
-    // Crash!
-    gameState.status = 'crashed';
-    console.log(`💥 Game crashed at ${gameState.crashPoint}x`);
-    
-    // Process pending bets (losses)
-    for (const [username, bet] of gameState.activeBets) {
-      try {
-        const user = await User.findOne({ username });
-        if (user) {
-          // No balance change, just record loss
-          io.to(bet.socketId).emit('betResult', {
-            result: 'loss',
-            multiplier: gameState.crashPoint,
-            betAmount: bet.amount,
-            profit: 0,
-            newBalance: user.balance
-          });
-        }
-      } catch (error) {
-        console.error('Error processing loss:', error);
-      }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'စကားဝှက်နှစ်ခု မတူညီပါ။' 
+      });
     }
-    
-    io.emit('gameCrashed', { multiplier: gameState.crashPoint });
-    
-    // Short pause before next round
-    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'စကားဝှက်သည် အနည်းဆုံး ၆ လုံးရှိရပါမည်။' 
+      });
+    }
+
+    // Check if username already exists
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ဤအသုံးပြုသူအမည်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။' 
+      });
+    }
+
+    // Check if email already exists
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ဤအီးမေးလ်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။' 
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create new user
+    const user = new User({
+      username,
+      email,
+      password: hashedPassword
+    });
+
+    await user.save();
+
+    // Set session
+    req.session.userId = user._id;
+    req.session.username = user.username;
+
+    res.json({ 
+      success: true, 
+      message: 'အကောင့်ဖွင့်ခြင်း အောင်မြင်ပါသည်။',
+      redirect: '/index.html'
+    });
+
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'ဆာဗာချိတ်ဆက်မှု အမှားရှိနေပါသည်။' 
+    });
   }
-}
+});
 
-// Start the game
-setTimeout(() => {
-  gameLoop();
-  startStatsUpdates();
-}, 1000);
+// LOGIN ROUTE (with Username)
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-// Socket.io Connection
-io.on('connection', (socket) => {
-  console.log('🔌 New client connected:', socket.id);
-  
-  socket.on('register', async (data) => {
-    try {
-      let user = await User.findOne({ username: data.username });
-      
-      if (!user) {
-        user = new User({ username: data.username });
-        await user.save();
-      }
-      
-      socket.emit('userData', {
-        username: user.username,
-        balance: user.balance
+    // Validation
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ကျေးဇူးပြု၍ အသုံးပြုသူအမည်နှင့် စကားဝှက် ဖြည့်သွင်းပါ။' 
       });
-      
-      // Send current game state
-      socket.emit('gameState', {
-        status: gameState.status,
-        multiplier: gameState.multiplier,
-        timeRemaining: gameState.timeRemaining
-      });
-      
-    } catch (error) {
-      console.error('Registration error:', error);
-      socket.emit('error', { message: 'Registration failed' });
     }
-  });
-  
-  socket.on('placeBet', async (data) => {
-    try {
-      if (gameState.status !== 'waiting') {
-        return socket.emit('error', { message: 'Can only bet during waiting time' });
-      }
-      
-      if (gameState.activeBets.has(data.username)) {
-        return socket.emit('error', { message: 'Bet already placed' });
-      }
-      
-      const user = await User.findOne({ username: data.username });
-      if (!user) {
-        return socket.emit('error', { message: 'User not found' });
-      }
-      
-      if (user.balance < data.amount) {
-        return socket.emit('error', { message: 'Insufficient balance' });
-      }
-      
-      // Deduct bet amount
-      user.balance -= data.amount;
-      user.totalBets += data.amount;
-      await user.save();
-      
-      // Store bet
-      gameState.activeBets.set(data.username, {
-        amount: data.amount,
-        socketId: socket.id
+
+    // Find user by username
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'အသုံးပြုသူအမည် သို့မဟုတ် စကားဝှက် မှားယွင်းနေပါသည်။' 
       });
-      
-      socket.emit('betPlaced', {
-        amount: data.amount,
-        newBalance: user.balance
-      });
-      
-      console.log(`💰 Bet placed: ${data.username} - Amount: ${data.amount}`);
-      
-    } catch (error) {
-      console.error('Bet placement error:', error);
-      socket.emit('error', { message: 'Failed to place bet' });
     }
-  });
-  
-  socket.on('cashout', async (data) => {
-    try {
-      if (gameState.status !== 'flying' || gameState.cashedOut.has(data.username)) {
-        return;
-      }
-      
-      const bet = gameState.activeBets.get(data.username);
-      if (!bet) {
-        return socket.emit('error', { message: 'No active bet found' });
-      }
-      
-      const user = await User.findOne({ username: data.username });
-      if (!user) {
-        return socket.emit('error', { message: 'User not found' });
-      }
-      
-      // Calculate winnings
-      const winnings = Math.floor(bet.amount * gameState.multiplier);
-      const profit = winnings - bet.amount;
-      
-      // Update user balance
-      user.balance += winnings;
-      user.totalWinnings += profit;
-      await user.save();
-      
-      // Remove from active bets
-      gameState.activeBets.delete(data.username);
-      gameState.cashedOut.set(data.username, gameState.multiplier);
-      
-      socket.emit('betResult', {
-        result: 'win',
-        multiplier: gameState.multiplier,
-        betAmount: bet.amount,
-        winnings: winnings,
-        profit: profit,
-        newBalance: user.balance
+
+    // Check if account is active
+    if (!user.isActive) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'ဤအကောင့်ကို ပိတ်ထားပါသည်။' 
       });
-      
-      console.log(`💰 Cashout: ${data.username} - Multiplier: ${gameState.multiplier}x - Profit: ${profit}`);
-      
-    } catch (error) {
-      console.error('Cashout error:', error);
-      socket.emit('error', { message: 'Failed to cashout' });
     }
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('🔌 Client disconnected:', socket.id);
+
+    // Check password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'အသုံးပြုသူအမည် သို့မဟုတ် စကားဝှက် မှားယွင်းနေပါသည်။' 
+      });
+    }
+
+    // Update last login
+    user.lastLogin = Date.now();
+    await user.save();
+
+    // Set session
+    req.session.userId = user._id;
+    req.session.username = user.username;
+
+    res.json({ 
+      success: true, 
+      message: 'အကောင့်ဝင်ရောက်ခြင်း အောင်မြင်ပါသည်။',
+      redirect: '/index.html'
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'ဆာဗာချိတ်ဆက်မှု အမှားရှိနေပါသည်။' 
+    });
+  }
+});
+
+// FORGET PASSWORD - Check Email
+app.post('/api/forget-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ကျေးဇူးပြု၍ အီးမေးလ် ဖြည့်သွင်းပါ။' 
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'ဤအီးမေးလ်ဖြင့် အကောင့်မရှိပါ။' 
+      });
+    }
+
+    // Store email in session for reset
+    req.session.resetEmail = email;
+
+    res.json({ 
+      success: true, 
+      message: 'အီးမေးလ် အတည်ပြုပြီးပါပြီ။',
+      redirect: '/reset-password.html'
+    });
+
+  } catch (error) {
+    console.error('Forget password error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'ဆာဗာချိတ်ဆက်မှု အမှားရှိနေပါသည်။' 
+    });
+  }
+});
+
+// RESET PASSWORD
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { newPassword, confirmPassword } = req.body;
+    const email = req.session.resetEmail;
+
+    if (!email) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'ကျေးဇူးပြု၍ ပြန်လည်စတင်ပါ။' 
+      });
+    }
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ကျေးဇူးပြု၍ စကားဝှက်အသစ် ဖြည့်သွင်းပါ။' 
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'စကားဝှက်နှစ်ခု မတူညီပါ။' 
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'စကားဝှက်သည် အနည်းဆုံး ၆ လုံးရှိရပါမည်။' 
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'အသုံးပြုသူ မတွေ့ပါ။' 
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    user.password = hashedPassword;
+    await user.save();
+
+    // Clear reset session
+    req.session.resetEmail = null;
+
+    res.json({ 
+      success: true, 
+      message: 'စကားဝှက် ပြောင်းလဲခြင်း အောင်မြင်ပါသည်။',
+      redirect: '/login.html'
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'ဆာဗာချိတ်ဆက်မှု အမှားရှိနေပါသည်။' 
+    });
+  }
+});
+
+// LOGOUT ROUTE
+app.get('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Logout failed' });
+    }
+    res.clearCookie('connect.sid');
+    res.json({ success: true, redirect: '/login.html' });
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+// CHECK AUTH STATUS
+app.get('/api/auth-status', (req, res) => {
+  if (req.session && req.session.userId) {
+    res.json({ 
+      isAuthenticated: true, 
+      username: req.session.username 
+    });
+  } else {
+    res.json({ isAuthenticated: false });
+  }
+});
+
+// GET USER DATA
+app.get('/api/user-data', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.session.userId).select('-password');
+    res.json({ 
+      success: true, 
+      user
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Serve game page with auth check
+app.get('/index.html', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Redirect root to login
+app.get('/', (req, res) => {
+  if (req.session && req.session.userId) {
+    res.redirect('/index.html');
+  } else {
+    res.redirect('/login.html');
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Premium Server running on port ${PORT}`);
 });
